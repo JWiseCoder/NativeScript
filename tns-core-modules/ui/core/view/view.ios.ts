@@ -26,9 +26,30 @@ const PFLAG_LAYOUT_REQUIRED = 1 << 2;
 
 const majorVersion = iosUtils.MajorVersion;
 
+class UIPopoverPresentationControllerDelegateImp extends NSObject implements UIPopoverPresentationControllerDelegate {
+    public static ObjCProtocols = [UIPopoverPresentationControllerDelegate];
+
+    private _ownerRef: WeakRef<View>;
+
+    public static initWithOwner(owner: WeakRef<View>): UIPopoverPresentationControllerDelegateImp {
+        const instance = <UIPopoverPresentationControllerDelegateImp>super.new();
+        instance._ownerRef = owner;
+
+        return instance;
+    }
+
+    public popoverPresentationControllerDidDismissPopover(popoverPresentationController: UIPopoverPresentationController) {
+        let ownerView = this._ownerRef.get();
+        if (ownerView) {
+            ownerView.closeModal();
+        }
+    }
+}
+
 export class View extends ViewCommon {
     nativeViewProtected: UIView;
     viewController: UIViewController;
+    private _popoverPresentationDelegate: UIPopoverPresentationControllerDelegateImp; 
 
     private _isLaidOut = false;
     private _hasTransfrom = false;
@@ -416,6 +437,8 @@ export class View extends ViewCommon {
 
             if (presentationStyle === UIModalPresentationStyle.Popover) {
                 const popoverPresentationController = controller.popoverPresentationController;
+                this._popoverPresentationDelegate = UIPopoverPresentationControllerDelegateImp.initWithOwner(new WeakRef(this));
+                popoverPresentationController.delegate = this._popoverPresentationDelegate;
                 const view = parent.nativeViewProtected;
                 // Note: sourceView and sourceRect are needed to specify the anchor location for the popover.
                 // Note: sourceView should be the button triggering the modal. If it the Page the popover might appear "behind" the page content
@@ -452,7 +475,12 @@ export class View extends ViewCommon {
         const parentController = parent.viewController;
         const animated = (<any>this.viewController).animated;
 
-        parentController.dismissViewControllerAnimatedCompletion(animated, whenClosedCallback);
+        if (this.viewController.popoverPresentationController && this.viewController.popoverPresentationController instanceof UIPopoverPresentationController) {
+            whenClosedCallback();
+            parentController.dismissViewControllerAnimatedCompletion(animated, null);
+        } else {
+            parentController.dismissViewControllerAnimatedCompletion(animated, whenClosedCallback);
+        }
     }
 
     [isEnabledProperty.getDefault](): boolean {
